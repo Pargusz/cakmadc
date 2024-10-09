@@ -9,7 +9,7 @@ socketio = SocketIO(app)
 def index():
     return render_template('index.html')
 
-# WebRTC signaling
+# WebRTC sinyalleşme işlemleri
 @socketio.on('offer')
 def handle_offer(offer):
     socketio.emit('offer', offer, broadcast=True)
