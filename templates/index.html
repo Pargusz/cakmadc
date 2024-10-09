@@ -8,17 +8,112 @@
 </head>
 <body>
     <h1>Sesli Sohbet ve Ekran Paylaşımı</h1>
+    <button id="startCall">Sesli Sohbete Başla</button>
     <button id="shareScreen">Ekranı Paylaş</button>
+    
+    <video id="localVideo" autoplay muted></video>
+    <video id="remoteVideo" autoplay></video>
 
     <script>
         const socket = io();
 
-        document.getElementById('shareScreen').onclick = () => {
-            socket.emit('share_screen', { message: 'Ekran paylaşılıyor...' });
+        let localStream;
+        let remoteStream;
+        let peerConnection;
+
+        const servers = {
+            iceServers: [
+                {
+                    urls: "stun:stun.l.google.com:19302" // STUN sunucusu
+                }
+            ]
         };
 
-        socket.on('screen_shared', (data) => {
-            console.log(data.message);
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+
+        document.getElementById('startCall').onclick = async () => {
+            // Kullanıcı mikrofon ve kamerayı alıyor
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            localVideo.srcObject = localStream;
+
+            // WebRTC peer bağlantısı oluşturuluyor
+            peerConnection = new RTCPeerConnection(servers);
+            remoteStream = new MediaStream();
+
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+
+            peerConnection.ontrack = event => {
+                event.streams[0].getTracks().forEach(track => {
+                    remoteStream.addTrack(track);
+                });
+                remoteVideo.srcObject = remoteStream;
+            };
+
+            // ICE adaylarını işleme
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    socket.emit('ice-candidate', event.candidate);
+                }
+            };
+
+            // Teklif oluşturma
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            socket.emit('offer', offer);
+        };
+
+        document.getElementById('shareScreen').onclick = async () => {
+            const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+            const screenTrack = screenStream.getTracks()[0];
+
+            // Ekran paylaşımını başlat
+            const sender = peerConnection.getSenders().find(s => s.track.kind === 'video');
+            sender.replaceTrack(screenTrack);
+
+            // Ekran paylaşımı bittiğinde geri kameraya dön
+            screenTrack.onended = () => {
+                sender.replaceTrack(localStream.getTracks().find(t => t.kind === 'video'));
+            };
+        };
+
+        socket.on('offer', async (offer) => {
+            // Diğer kullanıcının teklifi alınıyor
+            peerConnection = new RTCPeerConnection(servers);
+            remoteStream = new MediaStream();
+            peerConnection.ontrack = event => {
+                event.streams[0].getTracks().forEach(track => {
+                    remoteStream.addTrack(track);
+                });
+                remoteVideo.srcObject = remoteStream;
+            };
+
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    socket.emit('ice-candidate', event.candidate);
+                }
+            };
+
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('answer', answer);
+        });
+
+        socket.on('answer', async (answer) => {
+            // Karşı kullanıcının cevabı alınıyor
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        });
+
+        socket.on('ice-candidate', async (candidate) => {
+            // ICE adayları ekleniyor
+            try {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (e) {
+                console.error('ICE candidate error: ', e);
+            }
         });
     </script>
 </body>
