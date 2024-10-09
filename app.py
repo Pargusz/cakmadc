@@ -2,9 +2,8 @@ from flask import Flask, render_template
 from flask_socketio import SocketIO
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'your_secret_key'
 socketio = SocketIO(app)
-
-clients = []
 
 @app.route('/')
 def index():
@@ -12,24 +11,11 @@ def index():
 
 @socketio.on('join')
 def on_join(data):
-    clients.append(data['username'])
-    print("User joined:", data)
+    pass
 
-@socketio.on('offer')
-def handle_offer(data):
-    socketio.emit('offer', data, broadcast=True)
-
-@socketio.on('answer')
-def handle_answer(data):
-    socketio.emit('answer', data, broadcast=True)
-
-@socketio.on('candidate')
-def handle_candidate(data):
-    socketio.emit('candidate', data, broadcast=True)
-
-@socketio.on('screen-share')
-def handle_screen_share(data):
-    socketio.emit('screen-share', data, broadcast=True)
+@socketio.on('share_screen')
+def share_screen(data):
+    socketio.emit('screen_shared', data)
 
 if __name__ == '__main__':
     socketio.run(app)
